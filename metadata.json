@@ -1,0 +1,6 @@
+{
+  "name": "午夜疑云·AI探案",
+  "description": "深夜23:40私人别墅古董吊坠失窃案。扮演调查员，利用AI对话系统，与管家、佣人、访客深度沟通，比对时间线、分析证词漏洞与情绪起伏，推断出罪魁祸首！数据驱动对话，逻辑致胜！",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
