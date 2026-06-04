@@ -132,16 +132,95 @@ export default function AudioPlayer({ emotionStates, currentStage }: AudioPlayer
 
       let chordIndex = 0;
       
+      const playPianoNote = (freq: number, startTime: number, duration: number, velocity: number) => {
+        // Fundamental frequency string oscillation
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, startTime);
+
+        // Warm second harmonic (one octave up) for soundboard wooden resonance
+        const harmonic1 = ctx.createOscillator();
+        harmonic1.type = 'triangle';
+        harmonic1.frequency.setValueAtTime(freq * 2, startTime);
+
+        // Third harmonic (octave and a fifth up) for crystalline, chime-like hammer strikes
+        const harmonic2 = ctx.createOscillator();
+        harmonic2.type = 'sine';
+        harmonic2.frequency.setValueAtTime(freq * 3, startTime);
+
+        const gain1 = ctx.createGain();
+        const gain2 = ctx.createGain();
+        const gain3 = ctx.createGain();
+
+        // Standard classic piano hammer envelopes:
+        // Ultra-fast linear attack peak (0.003s) to define the initial mallet smash on strings
+        gain1.gain.setValueAtTime(0, startTime);
+        gain1.gain.linearRampToValueAtTime(0.18 * velocity, startTime + 0.003);
+        // Exponential decay into body sustain and slow release tail
+        gain1.gain.exponentialRampToValueAtTime(0.04 * velocity, startTime + 0.3);
+        gain1.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+
+        // Harmonic 1 (triangle wave / warmth) decays slightly faster
+        gain2.gain.setValueAtTime(0, startTime);
+        gain2.gain.linearRampToValueAtTime(0.07 * velocity, startTime + 0.005);
+        gain2.gain.exponentialRampToValueAtTime(0.01 * velocity, startTime + 0.22);
+        gain2.gain.exponentialRampToValueAtTime(0.0001, startTime + duration * 0.7);
+
+        // Harmonic 2 (high sheen sine filter) fades out almost immediately
+        gain3.gain.setValueAtTime(0, startTime);
+        gain3.gain.linearRampToValueAtTime(0.05 * velocity, startTime + 0.002);
+        gain3.gain.exponentialRampToValueAtTime(0.002 * velocity, startTime + 0.12);
+        gain3.gain.exponentialRampToValueAtTime(0.0001, startTime + duration * 0.45);
+
+        // Subtle slow frequency modulation mimicking a dusty antique piano / tape flutter
+        const vibrato = ctx.createOscillator();
+        const vibratoGain = ctx.createGain();
+        vibrato.frequency.value = 2.8; // 2.8 Hz nostalgic slow wobbling
+        vibratoGain.gain.value = 1.2;  // subtle cents drift
+        
+        vibrato.connect(vibratoGain);
+        vibratoGain.connect(osc.frequency);
+        vibratoGain.connect(harmonic1.frequency);
+        
+        vibrato.start(startTime);
+        vibrato.stop(startTime + duration + 0.1);
+
+        osc.connect(gain1);
+        gain1.connect(filter);
+
+        harmonic1.connect(gain2);
+        gain2.connect(filter);
+
+        harmonic2.connect(gain3);
+        gain3.connect(filter);
+
+        osc.start(startTime);
+        osc.stop(startTime + duration + 0.1);
+
+        harmonic1.start(startTime);
+        harmonic1.stop(startTime + duration + 0.1);
+
+        harmonic2.start(startTime);
+        harmonic2.stop(startTime + duration + 0.1);
+
+        synthNodesLocalRef.current.push(osc, harmonic1, harmonic2, vibrato);
+      };
+
       const playChordNotes = () => {
         const now = ctx.currentTime;
         
         let currentChord = investigateChords[chordIndex % investigateChords.length];
+        let tensionLevel: 'start' | 'intro' | 'normal' | 'tension' = 'normal';
+
         if (currentStage === 'start') {
           currentChord = startChords[chordIndex % startChords.length];
+          tensionLevel = 'start';
         } else if (currentStage === 'background') {
           currentChord = introChords[chordIndex % introChords.length];
+          tensionLevel = 'intro';
         } else if (isSuspenseIntense || currentStage === 'conclude') {
           currentChord = highTensionChords[chordIndex % highTensionChords.length];
+          tensionLevel = 'tension';
         }
 
         const moduloLength = currentStage === 'start' ? startChords.length 
@@ -160,53 +239,40 @@ export default function AudioPlayer({ emotionStates, currentStage }: AudioPlayer
           return true;
         });
 
-        // Trigger notes
+        // Trigger beautiful broken piano chord (琶音)
         currentChord.forEach((freq, idx) => {
-          const osc = ctx.createOscillator();
-          
-          if (currentStage === 'start') {
-            // Elegant soft sine and warm triangle overtone for start screen
-            osc.type = idx % 2 === 0 ? 'sine' : 'triangle';
-          } else if (isSuspenseIntense || currentStage === 'conclude') {
-            // Sawtooth for extreme gothic dread tension
-            osc.type = idx === 0 ? 'sawtooth' : 'triangle';
-          } else {
-            // Soft investigating sines
-            osc.type = 'sine';
-          }
-
-          osc.frequency.setValueAtTime(freq, now);
-
-          // Add subtle vibrato
-          const lfo = ctx.createOscillator();
-          const lfoGain = ctx.createGain();
-          lfo.frequency.value = currentStage === 'conclude' ? 4.5 : 2.0; // Faster vibration in panic stage
-          lfoGain.gain.value = currentStage === 'conclude' ? 5 : 2;      // Depth of pitch drift
-          
-          lfo.connect(lfoGain);
-          lfoGain.connect(osc.frequency);
-          lfo.start(now);
-          lfo.stop(now + 6.0);
-          synthNodesLocalRef.current.push(lfo);
-
-          const noteGain = ctx.createGain();
-          noteGain.gain.setValueAtTime(0, now);
-          
-          const attackTime = (currentStage === 'start') ? 2.0 : (isSuspenseIntense ? 0.35 : 1.6);
-          const sustainTime = isSuspenseIntense ? 2.5 : 4.5;
-          const decayTime = (currentStage === 'start') ? 2.0 : 1.2;
-
-          noteGain.gain.linearRampToValueAtTime(0.12, now + attackTime);
-          noteGain.gain.setValueAtTime(0.12, now + sustainTime);
-          noteGain.gain.linearRampToValueAtTime(0, now + sustainTime + decayTime);
-
-          osc.connect(noteGain);
-          noteGain.connect(filter);
-          osc.start(now);
-          osc.stop(now + sustainTime + decayTime + 0.3);
-
-          synthNodesLocalRef.current.push(osc);
+          const delay = idx * 0.28; // Romantic flowing pace of 280ms intervals
+          const noteDuration = 3.2 - (idx * 0.15); // Higher register notes fade quicker
+          const velocity = 0.95 - (idx * 0.08); // Striking accent on standard tones
+          playPianoNote(freq, now + delay, noteDuration, velocity);
         });
+
+        // Overlay a delicate classical piano lead motif to tell a story
+        const baseFreq = currentChord[0];
+        const melodyDelay = 1.32;
+
+        if (tensionLevel === 'start') {
+          // Elegiac double notes in romantic classical key
+          const highMelody1 = baseFreq > 120 ? 587.33 : 523.25; // D5 / C5
+          const highMelody2 = baseFreq > 120 ? 659.25 : 587.33; // E5 / D5
+          playPianoNote(highMelody1, now + melodyDelay, 2.2, 0.75);
+          playPianoNote(highMelody2, now + melodyDelay + 0.65, 2.6, 0.65);
+        } else if (tensionLevel === 'normal') {
+          // Melancholy broken-note detective motif
+          const highMelody1 = baseFreq * 4; 
+          if (highMelody1 > 350 && highMelody1 < 1000) {
+            playPianoNote(highMelody1, now + melodyDelay, 1.8, 0.58);
+            playPianoNote(highMelody1 * 1.25, now + melodyDelay + 0.72, 2.2, 0.48);
+          }
+        } else if (tensionLevel === 'tension') {
+          // Panicked high register clashes
+          const dissonantMelody = baseFreq * 5.6; 
+          playPianoNote(dissonantMelody, now + 0.6, 1.2, 0.72);
+          playPianoNote(dissonantMelody * 0.94, now + 1.15, 1.0, 0.62);
+        } else if (tensionLevel === 'intro') {
+          // Slow narrative ambient piano line
+          playPianoNote(baseFreq * 3.0, now + 1.4, 2.8, 0.52);
+        }
 
         // HEARTBEAT DRONE TICKER
         // Ticking heartbeat cue (Rapid double beats for high tension, calm ticking for investigate)
@@ -320,13 +386,13 @@ export default function AudioPlayer({ emotionStates, currentStage }: AudioPlayer
     if (!isPlaying) return '音效与音乐已关';
     switch (currentStage) {
       case 'start':
-        return '【中世纪大厅旧调】';
+        return '【肖邦之哀·深夜古典钢琴】';
       case 'background':
-        return '【幽府梦魇叙事】';
+        return '【幽暗公馆·叙事断章虚无钢琴】';
       case 'conclude':
-        return '【大审判·迷雾真相】';
+        return '【大审判·真相重合沉重钢琴变奏】';
       default:
-        return isSuspenseIntense ? '【危局·高压嫌犯】' : '【深渊公馆·漫步探查】';
+        return isSuspenseIntense ? '【危局·急促高频低音钢琴】' : '【公馆探秘·漫步独奏忧伤钢琴】';
     }
   };
 

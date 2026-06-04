@@ -2,7 +2,6 @@ import express from 'express';
 import path from 'path';
 import { GoogleGenAI, Type } from '@google/genai';
 import dotenv from 'dotenv';
-import { createServer as createViteServer } from 'vite';
 
 // Load environment variables
 dotenv.config();
@@ -925,21 +924,27 @@ ${specialLogicInstruction}
 });
 
 // Serve frontend assets for Vite / Static folders
-if (process.env.NODE_ENV !== 'production') {
-  createViteServer({
-    server: { middlewareMode: true },
-    appType: 'spa',
-  }).then((vite) => {
-    app.use(vite.middlewares);
-  }).catch((err) => {
-    console.error('Failed to create Vite server middleware:', err);
-  });
-} else {
-  const distPath = path.join(process.cwd(), 'dist');
-  app.use(express.static(distPath));
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(distPath, 'index.html'));
-  });
+if (!process.env.VERCEL) {
+  if (process.env.NODE_ENV !== 'production') {
+    import('vite').then(({ createServer: createViteServer }) => {
+      createViteServer({
+        server: { middlewareMode: true },
+        appType: 'spa',
+      }).then((vite) => {
+        app.use(vite.middlewares);
+      }).catch((err) => {
+        console.error('Failed to create Vite server middleware:', err);
+      });
+    }).catch((err) => {
+      console.error('Failed to dynamically load Vite in dev mode:', err);
+    });
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
 }
 
 if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
