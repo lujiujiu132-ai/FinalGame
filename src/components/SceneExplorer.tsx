@@ -18,6 +18,7 @@ interface SceneExplorerProps {
   isPendantFound: boolean;
   onAddCustomNote: (npcId: NpcId, content: string, hotspotId?: string) => void;
   isExtracted: Record<string, boolean>;
+  onBatchDiscoverHotspots?: (discovered: Array<{ npcId: NpcId; content: string; hotspotId: string }>) => void;
   setIsExtracted: (updater: (prev: Record<string, boolean>) => Record<string, boolean>) => void;
   language: Language;
   culpritId: NpcId;
@@ -116,6 +117,7 @@ export default function SceneExplorer({
   isPendantFound,
   onAddCustomNote,
   isExtracted,
+  onBatchDiscoverHotspots,
   setIsExtracted,
   language,
   culpritId,
@@ -269,40 +271,81 @@ export default function SceneExplorer({
       // Extract all hotspots for this scene automatically as a result of thorough searching
       const localizedHotspots = getLocalizedHotspots(language);
       const sceneHotspots = localizedHotspots[activeScene];
-      sceneHotspots.forEach(hotspot => {
-        if (!isExtracted[hotspot.id]) {
-          setIsExtracted(prev => ({ ...prev, [hotspot.id]: true }));
-          const suffix = {
-            zh: '搜查发现：',
-            en: ' discovered via searching: ',
-            ko: ' 수색 발견 단서: '
-          }[language];
-          onAddCustomNote(hotspot.associatedNpc, `${hotspot.name}${suffix}${hotspot.description.slice(0, 160)}...`, hotspot.id);
+
+      if (onBatchDiscoverHotspots) {
+        const discoveredItems = sceneHotspots
+          .filter(hotspot => !isExtracted[hotspot.id])
+          .map(hotspot => {
+            const suffix = {
+              zh: '搜查发现：',
+              en: ' discovered via searching: ',
+              ko: ' 수색 발견 단서: '
+            }[language];
+            return {
+              npcId: hotspot.associatedNpc,
+              content: `${hotspot.name}${suffix}${hotspot.description.slice(0, 160)}...`,
+              hotspotId: hotspot.id
+            };
+          });
+
+        if (discoveredItems.length > 0) {
+          onBatchDiscoverHotspots(discoveredItems);
+          discoveredItems.forEach(item => {
+            triggerClueUnlockForHotspot(item.hotspotId);
+          });
+        } else {
+          // ensure all triggers still fired
+          sceneHotspots.forEach(hotspot => {
+            triggerClueUnlockForHotspot(hotspot.id);
+          });
         }
-        triggerClueUnlockForHotspot(hotspot.id);
-      });
+      } else {
+        sceneHotspots.forEach(hotspot => {
+          if (!isExtracted[hotspot.id]) {
+            setIsExtracted(prev => ({ ...prev, [hotspot.id]: true }));
+            const suffix = {
+              zh: '搜查发现：',
+              en: ' discovered via searching: ',
+              ko: ' 수색 발견 단서: '
+            }[language];
+            onAddCustomNote(hotspot.associatedNpc, `${hotspot.name}${suffix}${hotspot.description.slice(0, 160)}...`, hotspot.id);
+          }
+          triggerClueUnlockForHotspot(hotspot.id);
+        });
+      }
 
     }, 1300);
   };
 
   const handleExtractClue = (hotspot: Hotspot) => {
     playWritingSound();
-    setIsExtracted(prev => ({ ...prev, [hotspot.id]: true }));
-    triggerClueUnlockForHotspot(hotspot.id);
+    let content = "";
     if (hotspot.id === 'ki-faucet') {
-      const content = {
+      content = {
         zh: '【生铁水龙头23:15声音侧证】根据水龙头冷凝汽、防滑丝摩擦及积水深度，在23:15案发当刻，厨房水龙头曾被完全旋开释放出持续的喷薄激流声。这强烈的环境喧鸣音犹如听觉隔障，完美遮蔽了同时走廊上嫌犯惊慌仓皇逃回房间的「沉重脚步声」，为该脚步声提供了完美的物理环境侧证！',
         en: '[Water Tap 23:15 Acoustic Evidence] Based on metal temperature and thread wear, the kitchen faucet was wide-open at 23:15, generating heavy rushing water sound. This intense background racket perfectly masked the panicked, heavy footsteps of the suspect hurrying back up the corridor, providing a critical acoustic alibi debunk!',
         ko: '[수도꼭지 23:15 교차 음파 단서] 수조 내부 응기 및 밸브 나선 톳니 마모 상황으로 대조해 23:15 정점 무렵 주방 수돗문이 완전 최대로 해방되어 굉음을 내지른 음파 간극이 입증되었습니다. 이 세척수 격리는 거실을 기습해 범죄를 저지르고 복도를 뛰어올라가며 낸 치명적 발걸음 소리를 완벽히 은폐해주는 물리 음음 방벽 역할을 수행했습니다!'
       }[language];
-      onAddCustomNote(hotspot.associatedNpc, content, hotspot.id);
     } else {
       const suffix = {
         zh: ' [玩家通过现场搜索获取铁证]',
         en: ' [Evidence retrieved by searching environment]',
         ko: ' [수사관 환경 탐사를 통한 인장 확립]'
       }[language];
-      onAddCustomNote(hotspot.associatedNpc, `${hotspot.name}：${hotspot.description.slice(0, 150)}...${suffix}`, hotspot.id);
+      content = `${hotspot.name}：${hotspot.description.slice(0, 150)}...${suffix}`;
+    }
+
+    if (onBatchDiscoverHotspots) {
+      onBatchDiscoverHotspots([{
+        npcId: hotspot.associatedNpc,
+        content: content,
+        hotspotId: hotspot.id
+      }]);
+      triggerClueUnlockForHotspot(hotspot.id);
+    } else {
+      setIsExtracted(prev => ({ ...prev, [hotspot.id]: true }));
+      triggerClueUnlockForHotspot(hotspot.id);
+      onAddCustomNote(hotspot.associatedNpc, content, hotspot.id);
     }
   };
 

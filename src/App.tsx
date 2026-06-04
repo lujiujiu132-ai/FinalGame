@@ -517,6 +517,37 @@ export default function App() {
     }));
   };
 
+  const handleBatchDiscoverHotspots = (discovered: Array<{ npcId: NpcId; content: string; hotspotId: string }>) => {
+    setIsExtracted(prevExtracted => {
+      const nextExtracted = { ...prevExtracted };
+      const newNotes: NoteItem[] = [];
+
+      discovered.forEach((item, index) => {
+        if (!nextExtracted[item.hotspotId]) {
+          nextExtracted[item.hotspotId] = true;
+          const uniqueId = `note-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`;
+          newNotes.push({
+            id: uniqueId,
+            npcId: item.npcId,
+            time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+            content: item.content,
+            isCustom: true,
+            hotspotId: item.hotspotId
+          });
+        }
+      });
+
+      if (newNotes.length > 0) {
+        setGameState(prev => ({
+          ...prev,
+          customNotes: [...newNotes, ...prev.customNotes]
+        }));
+      }
+
+      return nextExtracted;
+    });
+  };
+
   const handleUnlockContradiction = (clueId: string) => {
     setGameState(prev => {
       if (prev.unlockedClues.includes(clueId)) return prev;
@@ -796,6 +827,7 @@ export default function App() {
                 isPendantFound={isPendantFound}
                 onAddCustomNote={(npcId, content, hotspotId) => handleAddCustomNote(npcId, content, undefined, hotspotId)}
                 isExtracted={isExtracted}
+                onBatchDiscoverHotspots={handleBatchDiscoverHotspots}
                 setIsExtracted={setIsExtracted}
                 language={language}
                 culpritId={gameState.culpritId}
