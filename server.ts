@@ -942,6 +942,10 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Express server fully online on http://localhost:${PORT}`);
-});
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Express server fully online on http://localhost:${PORT}`);
+  });
+}
+
+export default app;
