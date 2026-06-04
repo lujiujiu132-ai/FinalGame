@@ -15,15 +15,19 @@ app.use(express.json());
 let ai: GoogleGenAI | null = null;
 const key = process.env.GEMINI_API_KEY;
 
-if (key) {
-  ai = new GoogleGenAI({
-    apiKey: key,
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
+try {
+  if (key && key.trim() !== '' && key !== 'undefined' && key !== 'null') {
+    ai = new GoogleGenAI({
+      apiKey: key,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
       },
-    },
-  });
+    });
+  }
+} catch (error) {
+  console.error('Failed to initialize GoogleGenAI client:', error);
 }
 
 function chooseRandom(options: string[]): string {
@@ -217,8 +221,9 @@ function enrichResponse(reply: string, currentEmotion: number, lang: string): st
 }
 
 // Universal fallback engine supporting 5 suspects across 5 case permutations
-function getFallbackResponse(npcId: string, message: string, currentEmotion: number, culpritId: string = 'maid', lang: string = 'zh') {
-  const text = message.toLowerCase();
+function getFallbackResponse(inputNpcId: string | undefined, message: string | undefined, currentEmotion: number, culpritId: string = 'maid', lang: string = 'zh') {
+  const npcId = inputNpcId || 'maid';
+  const text = (message || '').toLowerCase();
   
   // Default robust variety backup replies
   let replyOptions: string[] = [
@@ -926,7 +931,8 @@ ${specialLogicInstruction}
 // Serve frontend assets for Vite / Static folders
 if (!process.env.VERCEL) {
   if (process.env.NODE_ENV !== 'production') {
-    import('vite').then(({ createServer: createViteServer }) => {
+    const vitePkg = 'vite';
+    import(vitePkg).then(({ createServer: createViteServer }) => {
       createViteServer({
         server: { middlewareMode: true },
         appType: 'spa',
@@ -946,6 +952,18 @@ if (!process.env.VERCEL) {
     });
   }
 }
+
+// Global Error Handler to guarantee JSON responses on Vercel
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('Unhandled Application Error on Vercel:', err);
+  if (res.headersSent) {
+    return next(err);
+  }
+  res.status(500).json({
+    success: false,
+    error: err?.message || 'Internal Server Error'
+  });
+});
 
 if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
   app.listen(PORT, '0.0.0.0', () => {
